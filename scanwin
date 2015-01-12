@@ -65,6 +65,8 @@ class ScanThread(threading.Thread):
 class ScannerGrid:
     scans = []
     frame = None
+    total = 0
+    done = 0
     def __init__(self,frame,urls = []):
         self.frame = frame
         self.grid = frame.grid
@@ -108,11 +110,11 @@ class ScannerGrid:
 
     def renderRows(self):
         row = 0
-        total = len(self.scans)
-        done = 0
+        self.total = len(self.scans)
+        self.done = 0
         for s in self.scans:
             if s.scanned:
-                done+=1
+                self.done+=1
 
             if s.code<0:
                 code = ''
@@ -141,12 +143,12 @@ class ScannerGrid:
                 self.grid.SetCellBackgroundColour(row, 3, wx.WHITE)
 
             row+=1
-        if total==0:
+        if self.total==0:
             frame.SetStatusText('Scanning...')
-        elif total==done:
+        elif self.total==self.done:
             frame.SetStatusText('Done')
         else:
-            frame.SetStatusText('Scanning %i of %i' % (done,total))
+            frame.SetStatusText('Scanning %i of %i' % (self.done,self.total))
 
 
 def getSites():
