@@ -21,7 +21,7 @@ class scanner:
     UNDERLINE = '\033[4m'
  
     url = ''
-    ttfb = -1
+    ttfb = -1.0
     scanned = False
     scanning = False
     status = '--'
