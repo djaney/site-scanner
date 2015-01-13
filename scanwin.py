@@ -4,6 +4,7 @@ import wx
 import wx.grid
 import threading
 import paramiko
+import os
 from exceptions import IOError
 
 class GridFrame(wx.Frame):
@@ -23,10 +24,12 @@ class GridFrame(wx.Frame):
         self.scanMenu = wx.Menu()
         self.menuBar.Append(self.scanMenu, '&Scan')
         
+        self.menuOpen = self.scanMenu.Append(-1, '&Open', 'Open CSV')
         self.menuStartScan = self.scanMenu.Append(-1, '&Start', 'Start Scanning')
         self.menuStopScan = self.scanMenu.Append(-1, 'S&top', 'stop Scanning')
         self.Bind(wx.EVT_MENU, self.onMenuStartScan,self.menuStartScan)
         self.Bind(wx.EVT_MENU, self.onMenuStopScan,self.menuStopScan)
+        self.Bind(wx.EVT_MENU, self.onMenuOpen,self.menuOpen)
         #status bar
         self.CreateStatusBar(style=0)
         self.SetStatusText("Ready")
@@ -44,9 +47,17 @@ class GridFrame(wx.Frame):
 
         self.Maximize(True)
         self.Show(True)
+        
 
 
-
+    def openFile(self):
+        openFileDialog = wx.FileDialog(self, "Open site list", "", "",
+                                       "CSV files (*.csv)|*.csv", wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
+        if openFileDialog.ShowModal() != wx.ID_CANCEL:
+            self.scanGrid.readyScan(openFileDialog.GetPath())
+            
+    def onMenuOpen(self,event):
+        self.openFile()
     def onMenuStartScan(self,event):
         self.scanGrid.startScan()
     def onMenuStopScan(self,event):
@@ -93,21 +104,23 @@ class ScannerGrid:
         self.grid.SetColSize(3,500)
 
         self.grid.ClearGrid()
-        self.readyScan()
+        
 
-    def getSites(self):
+    def getSites(self,filePath):
 
-        output = ''
+        path = filePath
+        output = []
         try:
-            sites = open("scanwin.csv", "r")
+            sites = open(path, "r")
+            output = sites.readlines()
         except IOError, e:
-            print "scanwin.csv not found"
+            wx.MessageDialog(self.frame, path+" not found", caption="Error").ShowModal()
         finally:
-            return sites.readlines()
+            return output
 
-    def readyScan(self):
+    def readyScan(self,filePath='scanwin.csv'):
         urls = []
-        sites = self.getSites()
+        sites = self.getSites(filePath)
         for s in sites:
             urls.append('http://'+s)
         

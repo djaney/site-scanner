@@ -2,3 +2,4 @@ dist/*
 build/*
 scanwin.csv
 scanner.pyc
+setup.py
