@@ -37,17 +37,18 @@ class scanner:
  
         try:
             self.handle = urllib2.urlopen(self.url)
-        except urllib2.URLError as e:
-            self.code = 0
-            self.ttfb = 0
-            self.status = str(e.reason)
+
         except urllib2.HTTPError as e:
-            self.code = 0
-            self.ttfb = 0
+            self.code = e.code
+            self.ttfb = time.time() - tstart
+            self.status = str(e.reason)
+        except urllib2.URLError as e:
+            self.code = 400
+            self.ttfb = time.time() - tstart
             self.status = str(e.reason)
         except socket.timeout as e:
             self.code = 0
-            self.ttfb = 0
+            self.ttfb = time.time() - tstart
             self.status = 'timeout'
         else:
             self.code = self.handle.getcode()

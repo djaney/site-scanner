@@ -23,8 +23,10 @@ class GridFrame(wx.Frame):
         self.scanMenu = wx.Menu()
         self.menuBar.Append(self.scanMenu, '&Scan')
         
-        self.menuStartScan = self.scanMenu.Append(-1, 'Start', 'Start Scanning')
+        self.menuStartScan = self.scanMenu.Append(-1, '&Start', 'Start Scanning')
+        self.menuStopScan = self.scanMenu.Append(-1, 'S&top', 'stop Scanning')
         self.Bind(wx.EVT_MENU, self.onMenuStartScan,self.menuStartScan)
+        self.Bind(wx.EVT_MENU, self.onMenuStopScan,self.menuStopScan)
         #status bar
         self.CreateStatusBar(style=0)
         self.SetStatusText("Ready")
@@ -40,14 +42,15 @@ class GridFrame(wx.Frame):
         self.scanGrid = ScannerGrid(self)
 
 
-
+        self.Maximize(True)
         self.Show(True)
 
 
 
     def onMenuStartScan(self,event):
         self.scanGrid.startScan()
-
+    def onMenuStopScan(self,event):
+        self.scanGrid.stopScan()
 
 class ScanThread(threading.Thread):
     callback = None
@@ -64,9 +67,15 @@ class ScanThread(threading.Thread):
 
 class ScannerGrid:
     scans = []
+    threads = []
+    runningThreads = []
     frame = None
     total = 0
     done = 0
+    scanning = False
+
+    SCANS_AT_A_TIME = 3
+
     def __init__(self,frame,urls = []):
         self.frame = frame
         self.grid = frame.grid
@@ -77,36 +86,82 @@ class ScannerGrid:
 
         self.grid.SetColLabelValue(0,"URL")
         self.grid.SetColLabelValue(1,"HTTP")
-        self.grid.SetColLabelValue(2,"Status")
-        self.grid.SetColLabelValue(3,"Latency")
+        self.grid.SetColLabelValue(2,"Latency")
+        self.grid.SetColLabelValue(3,"Status")
 
         self.grid.SetColSize(0,500)
+        self.grid.SetColSize(3,500)
 
         self.grid.ClearGrid()
+        self.readyScan()
 
-    def startScan(self):
-        self.frame.SetStatusText("Getting sites...")
+    def getSites(self):
+
+        output = ''
+        try:
+            sites = open("scanwin.csv", "r")
+        except IOError, e:
+            print "scanwin.csv not found"
+        finally:
+            return sites.readlines()
+
+    def readyScan(self):
         urls = []
-        sites = getSites()
+        sites = self.getSites()
         for s in sites:
             urls.append('http://'+s)
         
-        self.scan(urls)
-
-    def scan(self,urls = []):
         self.grid.DeleteRows( 0, self.grid.GetNumberRows())
         self.grid.AppendRows(len(urls))
+
         self.scans = []
         for u in urls:
             scn = scanner(u)
             self.scans.append(scn)
-            t = ScanThread(scanner=scn,callback=self.onScanFinished)
-            t.start()
+        wx.CallAfter(self.renderRows)
 
-        self.renderRows()
+    def startScan(self):
+        self.scanning = True
+        self.threads = []
+        for s in self.scans:
+            if not s.scanned:
+                t = ScanThread(scanner=s,callback=self.onScanFinished)
+                t.daemon = True
+                self.threads.append(t)
+        wx.CallAfter(self.renderRows)
+        self.scanLoop()
+
+    def stopScan(self):
+        self.scanning = False
+
+    def scanLoop(self):
+
+        if len(self.threads)>0:
+
+            while len(self.runningThreads)<self.SCANS_AT_A_TIME:
+                thread = None
+                if len(self.threads)>0:
+                    thread = self.threads[0]
+                    del self.threads[0]
+
+                if thread!=None:
+                    thread.start()
+                    self.runningThreads.append(thread)
+        else:
+            self.scanning = False
+        wx.CallAfter(self.renderRows)
 
     def onScanFinished(self,scanner):
-        self.renderRows()
+        wx.CallAfter(self.renderRows)
+        #remove finished thread
+        for t in self.runningThreads:
+            if t.scanner == scanner:
+                self.runningThreads.remove(t)
+                break
+
+        if self.scanning:
+            self.scanLoop()
+
 
     def renderRows(self):
         row = 0
@@ -116,50 +171,61 @@ class ScannerGrid:
             if s.scanned:
                 self.done+=1
 
-            if s.code<0:
+            if not s.scanning and not s.scanned:
+                code = ''
+                status = ''
+                ttfb = ''
+            if s.scanning and not s.scanned:
                 code = ''
                 status = 'Scanning...'
                 ttfb = ''
             else:
-                code = str(s.code)
-                status = s.status
-                ttfb = str(s.ttfb)+'s'
+                if s.code>=0:
+                    status = s.status
+                    code = str(s.code)
+                else:
+                    status = ''
+                    code = ''
+                
+                if s.ttfb>0:
+                    ttfb = '{:0.1n}s'.format(s.ttfb)
+                else:
+                    ttfb = ''
 
             self.grid.SetCellValue(row, 0, s.url)
             self.grid.SetCellValue(row, 1, code)
-            self.grid.SetCellValue(row, 2, status.upper())
-            self.grid.SetCellValue(row, 3, ttfb)
-
+            self.grid.SetCellValue(row, 2, ttfb)
+            self.grid.SetCellValue(row, 3, status.upper())
+            
             if s.code==200:
-                self.grid.SetCellBackgroundColour(row, 2, wx.GREEN)
+                self.grid.SetCellBackgroundColour(row, 0, wx.GREEN)
             elif s.code>=0:
+                self.grid.SetCellBackgroundColour(row, 0, wx.RED)
+            else:
+                self.grid.SetCellBackgroundColour(row, 0, wx.WHITE)
+
+
+            if s.ttfb>0 and s.ttfb>=3:
                 self.grid.SetCellBackgroundColour(row, 2, wx.RED)
             else:
                 self.grid.SetCellBackgroundColour(row, 2, wx.WHITE)
 
-            if s.ttfb>0 and s.ttfb>=10:
-                self.grid.SetCellBackgroundColour(row, 3, wx.RED)
-            else:
-                self.grid.SetCellBackgroundColour(row, 3, wx.WHITE)
+
 
             row+=1
-        if self.total==0:
-            frame.SetStatusText('Scanning...')
+        if not self.scanning and len(self.runningThreads)==0:
+            self.frame.SetStatusText('Ready')
+        if not self.scanning and len(self.runningThreads)>0:
+            self.frame.SetStatusText('Stopping...')
+        elif self.total==0 and self.scanning:
+            self.frame.SetStatusText('Scanning...')
         elif self.total==self.done:
-            frame.SetStatusText('Done')
+            self.frame.SetStatusText('Done')
         else:
-            frame.SetStatusText('Scanning %i of %i' % (self.done,self.total))
+            self.frame.SetStatusText('Scanning %i of %i' % (self.done,self.total))
 
 
-def getSites():
 
-    output = ''
-    try:
-        sites = open("scanwin.csv", "r")
-    except IOError, e:
-        print "scanwin.csv not found"
-    finally:
-        return sites.readlines()
 
 
 if __name__ == '__main__':
