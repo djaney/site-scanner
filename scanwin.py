@@ -3,7 +3,6 @@ from scanner import scanner
 import wx
 import wx.grid
 import threading
-import paramiko
 import os
 from exceptions import IOError
 
@@ -134,6 +133,9 @@ class ScannerGrid:
         wx.CallAfter(self.renderRows)
 
     def startScan(self):
+        # already scanning
+        if self.scanning return
+
         self.scanning = True
         self.threads = []
         for s in self.scans:
